@@ -25,8 +25,8 @@
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
-#include "freertos\FreeRTOS.h"
-#include "freertos\timers.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/timers.h"
 
 #include "CS816D.h"
 #include "ASTIdef.h"
@@ -41,7 +41,7 @@
 #define I2C_MASTER_SDA_IO        4
 #define I2C_MASTER_SCL_IO        5
 #define I2C_MASTER_FREQ_HZ       400000
-#define I2C_ADDR_CST816D         0x15
+#define I2C_ADDR_CST816D         0x1
 //==================================================================================================
 //	Local define I/O
 //==================================================================================================

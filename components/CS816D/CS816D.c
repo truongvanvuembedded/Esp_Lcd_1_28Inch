@@ -34,14 +34,23 @@
 //	Local define
 //==================================================================================================
 
-#define	U1_TP_RST_PIN			(U1)1
-#define	U1_TP_INT_PIN			(U1)0
+#define	U1_TP_RST_PIN				((U1)1)
+#define	U1_TP_INT_PIN				((U1)0)
 
-#define I2C_MASTER_PORT          I2C_NUM_0
-#define I2C_MASTER_SDA_IO        4
-#define I2C_MASTER_SCL_IO        5
-#define I2C_MASTER_FREQ_HZ       400000
-#define I2C_ADDR_CST816D         0x1
+#define I2C_MASTER_PORT				I2C_NUM_0
+#define U1_I2C_MASTER_SDA_IO		((U1)4)
+#define U1_I2C_MASTER_SCL_IO		((U1)5)
+#define U4_I2C_MASTER_FREQ_HZ		((U4)400000)
+#define U1_I2C_ADDR_CST816D			((U1)0x1)
+
+// CST816D configuration
+#define CST816D_ADDR 				((U1)0x15)
+#define CST816D_REG_GESTURE			((U1)0x01)
+#define CST816D_REG_FINGERNUM		((U1)0x02)
+#define CST816D_REG_XPOS_H			((U1)0x03)
+#define CST816D_REG_XPOS_L			((U1)0x04)
+#define CST816D_REG_YPOS_H			((U1)0x05)
+#define CST816D_REG_YPOS_L			((U1)0x06)
 //==================================================================================================
 //	Local define I/O
 //==================================================================================================
@@ -53,13 +62,8 @@
 //==================================================================================================
 //	Local RAM
 //==================================================================================================
-static i2c_master_dev_handle_t dev_handle;
-i2c_master_bus_handle_t i2c_bus = NULL;
-i2c_master_dev_handle_t cst816d_dev = NULL;
-
-U1 au1_FingerIndex;
-U1 au1_data[4];
-U1 au1_Gesture;
+static i2c_master_dev_handle_t cst816d_dev;		// cst816d touch device handle
+static i2c_master_bus_handle_t i2cbus_handle;	// I2C master bus handle
 //==================================================================================================
 //	Local ROM
 //==================================================================================================
@@ -72,8 +76,7 @@ static const char *TAG = "CS816D";
 //==================================================================================================
 //	Source Code
 //==================================================================================================
-static void cst816d_i2c_write_continous(U1 au1_Adr, U1 *apu1_Data, U1 au1_Len);
-static void cst816d_i2c_read_continous(U1 au1_Adr, U1 *apu1_Data, U1 au1_Len);
+static U1 u1_cst816d_i2c_read_continous(U1 u1_RegAdd, U1 *apu1_Data, U2 au2_Len);
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //	Name	:	CS816D_Init
@@ -89,52 +92,51 @@ static void cst816d_i2c_read_continous(U1 au1_Adr, U1 *apu1_Data, U1 au1_Len);
 void CS816D_Init(void)
 {
 	ESP_LOGI(TAG, "Initialize CS816D");
-	// Configure I2C bus
-    i2c_master_bus_config_t bus_config = {
-        .i2c_port = I2C_MASTER_PORT,
-        .sda_io_num = I2C_MASTER_SDA_IO,
-        .scl_io_num = I2C_MASTER_SCL_IO,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .intr_priority = 0,
-        .trans_queue_depth = 4,
-        .flags.enable_internal_pullup = 1,
-    };
-    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &i2c_bus));
+	// Initialize I2C bus
+	i2c_master_bus_config_t i2cbus_config = {
+		.clk_source = I2C_CLK_SRC_DEFAULT,
+		.i2c_port = I2C_MASTER_PORT,
+		.scl_io_num = U1_I2C_MASTER_SCL_IO,
+		.sda_io_num = U1_I2C_MASTER_SDA_IO,
+		.glitch_ignore_cnt = 7,
+		.flags.enable_internal_pullup = true,
+	};
+	ESP_ERROR_CHECK(i2c_new_master_bus(&i2cbus_config, &i2cbus_handle));
 
-	// Configure master device
-    i2c_device_config_t dev_config = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = I2C_ADDR_CST816D,
-        .scl_speed_hz = I2C_MASTER_FREQ_HZ,
-        .flags.disable_ack_check = 0,
-    };
-	ESP_ERROR_CHECK(i2c_master_bus_add_device(i2c_bus, &dev_config, &cst816d_dev));
+	// Add device to I2C bus
+	i2c_device_config_t dev_cfg = {
+		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+		.device_address = CST816D_ADDR,
+		.scl_speed_hz = U4_I2C_MASTER_FREQ_HZ,
+	};
+	ESP_ERROR_CHECK(i2c_master_bus_add_device(i2cbus_handle, &dev_cfg, &cst816d_dev));
 
-	// Configure INT and RST pins
+	// Configure INT pin as input
 	gpio_config_t io_conf = {
-		.pin_bit_mask = (1ULL << U1_TP_INT_PIN) | (1ULL << U1_TP_RST_PIN),
-		.mode = GPIO_MODE_OUTPUT,
+		.pin_bit_mask = (1ULL << U1_TP_INT_PIN),
+		.mode = GPIO_MODE_INPUT,
 		.pull_up_en = GPIO_PULLUP_ENABLE,
 		.pull_down_en = GPIO_PULLDOWN_DISABLE,
-		.intr_type = GPIO_INTR_DISABLE,
+		.intr_type = GPIO_INTR_NEGEDGE,
 	};
-	ESP_ERROR_CHECK(gpio_config(&io_conf));
+	gpio_config(&io_conf);
 
-	ESP_LOGI(TAG, "Config GPIO for CS816D");
-	gpio_set_level(U1_TP_INT_PIN, U1HI); // Reset the CS816D
-	vTaskDelay(10 / portTICK_PERIOD_MS); // Wait for 10ms
-	gpio_set_level(U1_TP_INT_PIN, U1LO); // Release reset
-	vTaskDelay(10 / portTICK_PERIOD_MS); // Wait for 10ms
+	// Configure RST pin as output and perform reset
+	gpio_config_t rst_conf = {
+		.pin_bit_mask = (1ULL << U1_TP_RST_PIN),
+		.mode = GPIO_MODE_OUTPUT,
+	};
+	gpio_config(&rst_conf);
 
-	// gpio_set_level(U1_TP_RST_PIN, U1LO); // Reset the CS816D
-	// vTaskDelay(10 / portTICK_PERIOD_MS); // Wait for 10ms
-	// gpio_set_level(U1_TP_RST_PIN, U1HI); // Release reset
-	// vTaskDelay(10 / portTICK_PERIOD_MS); // Wait for 10ms
+	// Reset sequence
+	gpio_set_level(U1_TP_RST_PIN, 0);
+	vTaskDelay(10/portTICK_PERIOD_MS);
+	gpio_set_level(U1_TP_RST_PIN, 1);
+	vTaskDelay(50/portTICK_PERIOD_MS);
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	Name	:	CS816D_Read_Touch
+//	Name	:	u1_CS816D_ReadTouch
 //	Function:	Get position data from CS816D
 //	
 //	Argument:	-
@@ -144,49 +146,31 @@ void CS816D_Init(void)
 //	Remarks	:	-
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-U1 u1_CS816D_Read_Touch(U2 *apu2_x, U2 *apu2_y, U1 *apu1_Gesture)
+U1 u1_CS816D_ReadTouch(ST_TOUCH_DATA *apst_TouchData)
 {
-	ESP_LOGI(TAG, "Read Touch Data");
-	au1_FingerIndex = U1FALSE;
-
-	cst816d_i2c_read_continous(0x02, &au1_FingerIndex, (U1)1);
-	cst816d_i2c_read_continous(0x01, &au1_Gesture, (U1)1);
-	if (!(au1_Gesture == U1_SlideUp || au1_Gesture == U1_SlideDown))
+	U1 au1_Data[6];
+	U1 au1_Ret;
+	au1_Ret = U1NG;
+	if (gpio_get_level(U1_TP_INT_PIN) == U1OFF) 
 	{
-		au1_Gesture = U1_None;
+		au1_Ret = u1_cst816d_i2c_read_continous(CST816D_REG_GESTURE, au1_Data, sizeof(au1_Data));
+		// Read all touch data registers
+		if (au1_Ret == U1OK) 
+		{
+			apst_TouchData->u1_Gesture = au1_Data[0];
+			apst_TouchData->u1_FingerNum = au1_Data[1];
+			apst_TouchData->u2_X = ((au1_Data[2] & 0x0F) << 8) | au1_Data[3];
+			apst_TouchData->u2_Y = ((au1_Data[4] & 0x0F) << 8) | au1_Data[5];
+			
+			ESP_LOGI(TAG, "Touch detected - X: %d, Y: %d", apst_TouchData->u2_X, apst_TouchData->u2_Y);
+		}
 	}
-	*apu1_Gesture = au1_Gesture;
-
-	cst816d_i2c_read_continous(0x03,au1_data,4);
-	*apu2_x = ((au1_data[0] & 0x0f) << 8) | au1_data[1];
-	*apu2_y = ((au1_data[2] & 0x0f) << 8) | au1_data[3];
-
-
-	return au1_FingerIndex;
-}
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//	Name	:	cst816d_i2c_write_continous
-//	Function:	Wite multi byte via I2C
-//	
-//	Argument:	-
-//	Return	:	-
-//	Create	:	09/05/2025
-//	Change	:	-
-//	Remarks	:	-
-//
-////////////////////////////////////////////////////////////////////////////////////////////////////
-static void cst816d_i2c_write_continous(U1 au1_Adr, U1 *apu1_Data, U1 au1_Len)
-{
-	U1 au1_Tmp;
-	au1_Tmp = (au1_Adr<<1);
-	ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, &au1_Tmp, 1, 1000 / portTICK_PERIOD_MS));
-	ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, apu1_Data, au1_Len, 1000 / portTICK_PERIOD_MS));
+	return au1_Ret;
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //	Name	:	u1_cst816d_i2c_read_continous
-//	Function:	Read multi byte via I2C
+//	Function:	Read from I2C device using master API
 //	
 //	Argument:	-
 //	Return	:	-
@@ -195,10 +179,20 @@ static void cst816d_i2c_write_continous(U1 au1_Adr, U1 *apu1_Data, U1 au1_Len)
 //	Remarks	:	-
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-static void cst816d_i2c_read_continous(U1 au1_Adr, U1 *apu1_Data, U1 au1_Len)
+static U1 u1_cst816d_i2c_read_continous(U1 u1_RegAdd, U1 *apu1_Data, U2 au2_Len)
 {
-	esp_err_t ret = i2c_master_transmit_receive(cst816d_dev, &au1_Adr, 1, apu1_Data, au1_Len, 100/portTICK_PERIOD_MS);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "I2C read failed: %s", esp_err_to_name(ret));
-    }
+	S1 as1_Timeout;
+	esp_err_t ret;
+	as1_Timeout = -1; // Timeout in ms
+	// Write register address first
+	ret = i2c_master_transmit(cst816d_dev, &u1_RegAdd, 1, as1_Timeout);
+	if (ret != ESP_OK) {
+		return U1NG;
+	}
+	// Then read data
+	ret = i2c_master_receive(cst816d_dev, apu1_Data, au2_Len, as1_Timeout);
+	if (ret != ESP_OK) {
+		return U1NG;
+	}
+	return U1OK;
 }

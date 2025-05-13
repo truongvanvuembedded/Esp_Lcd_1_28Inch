@@ -5,9 +5,18 @@
 #ifndef _GC9A01_H
 #define _GC9A01_H
 
-#define GC9A01_Width	CONFIG_GC9A01_Width
-#define GC9A01_Height 	CONFIG_GC9A01_Height
+#define GC9A01_Width	240
+#define GC9A01_Height 	240
 
+#define CONFIG_GC9A01_PIN_NUM_MOSI		7
+#define CONFIG_GC9A01_PIN_NUM_SCK		6
+#define CONFIG_GC9A01_PIN_NUM_CS		10
+#define CONFIG_GC9A01_PIN_NUM_DC		2
+
+#define CONFIG_GC9A01_SPI_SCK_FREQ_M	
+
+#define CONFIG_GC9A01_BUFFER_MODE		1
+#define CONFIG_GC9A01_BUFFER_MODE_PSRAM	0
 uint16_t GC9A01_GetWidth();
 uint16_t GC9A01_GetHeight();
 

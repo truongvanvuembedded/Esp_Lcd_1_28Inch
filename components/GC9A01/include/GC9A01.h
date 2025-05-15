@@ -37,5 +37,6 @@ uint16_t GC9A01_GetPixel(int16_t x, int16_t y);
 
 void GC9A01_Screen_Shot(uint16_t x,uint16_t y,uint16_t width ,uint16_t height,uint16_t * Buffer);
 void GC9A01_Screen_Load(uint16_t x,uint16_t y,uint16_t width ,uint16_t height,uint16_t * Buffer);
-
+void GC9A01_SetWindow(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1);
+void lcd_data(const uint8_t *data, int len);
 #endif

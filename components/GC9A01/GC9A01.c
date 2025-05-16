@@ -7,7 +7,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
+#include "esp_log.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "driver/ledc.h"
@@ -71,9 +71,9 @@ uint8_t GC9A01_X_Start = 0, GC9A01_Y_Start = 0;
 
 #if (CONFIG_GC9A01_BUFFER_MODE)
 #if (CONFIG_GC9A01_BUFFER_MODE_PSRAM)
-uint16_t *ScreenBuff = NULL;
+uint16_t *U2_ScreenBuff = NULL;
 #else
-DMA_ATTR uint16_t ScreenBuff[GC9A01_Height * GC9A01_Width];
+DMA_ATTR uint16_t U2_ScreenBuff[GC9A01_Height * GC9A01_Width];
 
 #endif
 
@@ -414,14 +414,14 @@ void GC9A01_SetBL(uint8_t Value)
 
 		SwapBytes(&color);
 
-		ScreenBuff[y * GC9A01_Width + x] = color;
+		U2_ScreenBuff[y * GC9A01_Width + x] = color;
 	}
 
 	uint16_t GC9A01_GetPixel(int16_t x, int16_t y) {
 		if ((x < 0) || (x >= GC9A01_Width) || (y < 0) || (y >= GC9A01_Height))
 			return 0;
 
-		uint16_t color = ScreenBuff[y * GC9A01_Width + x];
+		uint16_t color = U2_ScreenBuff[y * GC9A01_Width + x];
 		SwapBytes(&color);
 		return color;
 	}
@@ -453,7 +453,7 @@ void GC9A01_SetBL(uint8_t Value)
 		for (uint16_t row = 0; row < h; row++) {
 			for (uint16_t col = 0; col < w; col++)
 				//GC9A01_DrawPixel(col, row, color);
-				ScreenBuff[(y + row) * GC9A01_Width + x + col] = color;
+				U2_ScreenBuff[(y + row) * GC9A01_Width + x + col] = color;
 		}
 	}
 
@@ -461,7 +461,7 @@ void GC9A01_SetBL(uint8_t Value)
 	{
 		int len = GC9A01_Width * GC9A01_Height;
 		GC9A01_SetWindow(0, 0, GC9A01_Width - 1, GC9A01_Height - 1);
-		lcd_data((uint8_t*) &ScreenBuff[0], len*2);
+		lcd_data((uint8_t*) &U2_ScreenBuff[0], len*2);
 	}
 
 	void GC9A01_Clear(void)
@@ -581,9 +581,9 @@ void GC9A01_Init()
 	GC9A01_Y_Start = 0;
 
 	#if (CONFIG_GC9A01_BUFFER_MODE_PSRAM)
-	if (ScreenBuff == NULL) {
+	if (U2_ScreenBuff == NULL) {
 		// ScreenBuffer has not yet been allocated
-		ScreenBuff = heap_caps_malloc((GC9A01_Height * GC9A01_Width) * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT );
+		U2_ScreenBuff = heap_caps_malloc((GC9A01_Height * GC9A01_Width) * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT );
 	}
 	#endif
 
@@ -639,8 +639,8 @@ void GC9A01_Init()
 
 #if (CONFIG_GC9A01_BUFFER_MODE_PSRAM)
 void GC9A01_Free(void) {
-	if (ScreenBuff != NULL) {
-		free(ScreenBuff);
+	if (U2_ScreenBuff != NULL) {
+		free(U2_ScreenBuff);
 	}
 }
 #endif
@@ -656,7 +656,7 @@ void GC9A01_Screen_Shot(uint16_t x,uint16_t y,uint16_t width ,uint16_t height,ui
 			#if(!CONFIG_GC9A01_BUFFER_SCREEN_FAST_MODE)
 			Buffer[i*width+j]=GC9A01_GetPixel(x+j,y+i);
 			#else
-			Buffer[i*width+j]=ScreenBuff[((y+i) * GC9A01_Width )+ (x+j)];
+			Buffer[i*width+j]=U2_ScreenBuff[((y+i) * GC9A01_Width )+ (x+j)];
 			#endif
 		}
 	}
@@ -671,7 +671,7 @@ void GC9A01_Screen_Load(uint16_t x,uint16_t y,uint16_t width ,uint16_t height,ui
 			#if(!CONFIG_GC9A01_BUFFER_SCREEN_FAST_MODE)
 			GC9A01_DrawPixel(x+j,y+i,Buffer[i*width+j]);
 			#else
-			ScreenBuff[((y+i) * GC9A01_Width )+ (x+j)] = Buffer[i*width+j];
+			U2_ScreenBuff[((y+i) * GC9A01_Width )+ (x+j)] = Buffer[i*width+j];
 			#endif
 		}
 	}
